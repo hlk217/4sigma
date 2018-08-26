@@ -1,6 +1,6 @@
-def run_GLM(x,y,ElasticNet=False,Lasso=False,Ridge=False):
+def run_GLM(x,y,test,ElasticNet=False,Lasso=False,Ridge=False, save=False):
     """
-    Elastic net, Lasso, Ridge. Set True to use one of the functions; with Pandas and numpy imported
+    Elastic net, Lasso, Ridge. Set True to use one of the functions; with Pandas and numpy imported; test is where you put test dataset, and make sure save is true to out put the data set
     """
     from sklearn.model_selection import GridSearchCV # search for the best lambda
     from sklearn import linear_model
@@ -21,7 +21,10 @@ def run_GLM(x,y,ElasticNet=False,Lasso=False,Ridge=False):
         # fit best ridge equation to all train data
         best_EN_y = para_search_EN.best_estimator_.predict(x)
         print("RMSE: ", np.sqrt(np.mean((y-best_EN_y)**2)))
-
+        
+        best_test_y = para_search_EN.best_estimator_.predict(test)
+        if save==True:
+            np.savetxt("res_EN.csv", best_test_y, delimiter=",")
 ######    
     if Lasso == True:
         lasso= linear_model.Lasso(normalize=True) # create a ridge regression instance
@@ -37,6 +40,9 @@ def run_GLM(x,y,ElasticNet=False,Lasso=False,Ridge=False):
         # fit best ridge equation to all train data
         best_lasso_y = para_search_lasso.best_estimator_.predict(x)
         print("RMSE: ", np.sqrt(np.mean((y-best_lasso_y)**2)))
+        best_test_y = para_search_lasso.best_estimator_.predict(test)
+        if save==True:
+            np.savetxt("res_lasso.csv", best_test_y, delimiter=",")
 
 ##############
     if Ridge==True:
@@ -54,8 +60,12 @@ def run_GLM(x,y,ElasticNet=False,Lasso=False,Ridge=False):
         # fit best ridge equation to all train data
         best_ridge_y = para_search_ridge.best_estimator_.predict(x)
         print("RMSE: ", np.sqrt(np.mean((y-best_ridge_y)**2)))
+        best_test_y = para_search_ridge.best_estimator_.predict(test)
+        if save==True:
+            np.savetxt("res_ridge.csv", best_test_y, delimiter=",")
 
-def run_RF(x,y,number_of_trees=1000, min_leaf=4,min_split=4,rs=1):
+
+def run_RF(x,y,test,number_of_trees=1000, min_leaf=4,min_split=4,rs=1, save=False):
     """
     RandomForest. Input number of trees. rs is randomstate
     """
@@ -80,8 +90,15 @@ def run_RF(x,y,number_of_trees=1000, min_leaf=4,min_split=4,rs=1):
      # fit best ridge equation to all train data
     best_rf_y = grid_search_forest.best_estimator_.predict(x)
     print("RMSE: ", np.sqrt(np.mean((y-best_rf_y)**2)))
+    best_test_y = grid_search_forest.best_estimator_.predict(test)
+    if save==True:
+        np.savetxt("res_rf.csv", best_test_y, delimiter=",")
+
     
-def run_GB(x,y,number_of_trees=10000, min_split=4,learningrate=0.001, maxfeature=18):
+def run_GB(x,y,test,number_of_trees=10000, min_split=4,learningrate=0.001, maxfeature=18, save=False):
+    """
+    test is where you put test dataset, and make sure save is true to out put the data set
+    """
     from sklearn import model_selection
     from sklearn.metrics import mean_squared_error
     from sklearn import ensemble
@@ -91,18 +108,19 @@ def run_GB(x,y,number_of_trees=10000, min_split=4,learningrate=0.001, maxfeature
     import numpy as np
     xg=ensemble.GradientBoostingRegressor()
 
-    grid_para_xg =[{'n_estimators': number_of_trees, 'max_depth': [4], 'min_samples_split':min_split, 
-                 'learning_rate': learningrate, 'loss':['ls'], 'max_features':maxfeature}]
-
-    #max depth 4 #min_sample:6
-    #max_features 18
+    grid_para_xg =[{'n_estimators': [number_of_trees], 'max_depth': [4], 'min_samples_split':[min_split], 
+                 'learning_rate': [learningrate], 'loss':['ls'], 'max_features':[maxfeature]}]
+ 
     grid_search_xg = model_selection.GridSearchCV(xg, grid_para_xg, scoring='neg_mean_squared_error', cv=3, return_train_score=True,  n_jobs=-1)
-    #scoring:mse
+
     grid_search_xg.fit(x,y)
     print(grid_search_xg.best_params_)
     print("Lowest RMSE found: ", np.sqrt(np.abs(grid_search_xg.best_score_)))
 
         # fit best ridge equation to all train data
     best_gb_y = grid_search_xg.best_estimator_.predict(x)
-    print("RMSE: ", np.sqrt(np.mean((y-gb_y)**2)))
+    print("RMSE: ", np.sqrt(np.mean((y-best_gb_y)**2)))
+    best_test_y = grid_search_xg.best_estimator_.predict(test)
+    if save==True:
+        np.savetxt("res_gb.csv", best_test_y, delimiter=",")
 
