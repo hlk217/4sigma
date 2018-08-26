@@ -21,6 +21,9 @@ import numpy as np
 import pandas as pd
 import math
 import re
+from scipy.stats import kurtosis, skew
+from scipy.special import boxcox1p
+
 
 def impute( inputDF, onehot = False):
 	
@@ -50,10 +53,10 @@ def impute( inputDF, onehot = False):
 	## Dummy MasVnrType to MasVnr and replace the value with MasVnrArea
 	###############################################################################################
 	
-	preProcessCatField = ["MasVnrType", "Exterior1st", "Exterior2nd", "BsmtFinType1", "BsmtFinType2"]
+	preProcessCatField = ["MasVnrType", "Exterior1st", "Exterior2nd", "BsmtFinType1", "BsmtFinType2", "Condition1", "Condition2"]
 	preProcessNumFiled = ["1stFlrSF", "2ndFlrSF", "MasVnrArea", "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "BsmtFullBath", "BsmtHalfBath"]
 	inputDF[preProcessCatField] = inputDF[preProcessCatField].fillna("Unknown")
-	inputDF[preProcessNumFiled] = inputDF[preProcessNumFiled].fillna(-1)
+	inputDF[preProcessNumFiled] = inputDF[preProcessNumFiled].fillna(0)
 	
 	# Exterior1st, Exterior2nd (Exterior covering on house)
 	var1_dummy_columns = pd.get_dummies(inputDF['Exterior1st'], prefix= "Exterior")
@@ -65,8 +68,9 @@ def impute( inputDF, onehot = False):
 	inputDF = inputDF.drop( columns=['Exterior1st', 'Exterior2nd'] )
 	
 	#TotalBsmtFinSF = "BsmtFinSF1"+ "BsmtFinSF2" ( + "TotalBsmtSF" )
-	inputDF["TotalFlrSF"] = inputDF["1stFlrSF"].fillna(0) + inputDF["2ndFlrSF"].fillna(0) + inputDF["TotalBsmtSF"].fillna(0)
-	inputDF["TotalFlrSF"].replace(0, math.nan)
+	inputDF["TotalBsmtSF"] = inputDF["TotalBsmtSF"].fillna(0)
+	inputDF["TotalFlrSF"] = inputDF["1stFlrSF"] + inputDF["2ndFlrSF"] + inputDF["TotalBsmtSF"]
+
 	# BsmtFinType1, BsmtFinType2, BsmtFinSF1 (Type 1 finished square feet), BsmtFinSF2 (Type 1 finished square feet), BsmtUnfSF: Unfinished square feet of basement area
 	var1_dummy_columns = pd.get_dummies(inputDF['BsmtFinType1'], prefix= "Bsmt") 
 	var1_dummy_columns = var1_dummy_columns.mul( inputDF['BsmtFinSF1'] , axis=0)
@@ -90,13 +94,53 @@ def impute( inputDF, onehot = False):
 	inputDF['BsmtBath'] = inputDF["BsmtFullBath"] + 0.5* inputDF["BsmtHalfBath"] 
 	inputDF = inputDF.drop( columns=['BsmtFullBath', 'BsmtHalfBath'] )
 
-	inputDF["TotalProchSF"] = inputDF["OpenPorchSF"] + inputDF["EnclosedPorch"] + inputDF["3SsnPorch"] + inputDF["ScreenPorch"] 
+	inputDF["TotalPorchSF"] = inputDF["OpenPorchSF"] + inputDF["EnclosedPorch"] + inputDF["3SsnPorch"] + inputDF["ScreenPorch"] 
 
 	#MasVnrType, MasVnrArea
 	var_dummy_columns = pd.get_dummies(inputDF['MasVnrType'], prefix= "MasVnr") 
 	var_dummy_columns = var_dummy_columns.mul( inputDF['MasVnrArea'] , axis=0)
 	inputDF = pd.concat([inputDF, var_dummy_columns], join='outer', sort=True, axis=1)
 	inputDF = inputDF.drop( columns=['MasVnrType', 'MasVnrArea'] )
+	
+	#Condition1, Condition2: Proximity to various conditions
+	var1_dummy_columns = pd.get_dummies(inputDF['Condition1'], prefix= "Cond")
+	var2_dummy_columns = pd.get_dummies(inputDF['Condition2'], prefix= "Cond")
+	var_dummy_columns = pd.concat([var1_dummy_columns,var2_dummy_columns], join='outer', sort=True).groupby(level=0).sum()
+	var_dummy_columns = var_dummy_columns.replace(2, 1)
+	inputDF = pd.concat([inputDF, var_dummy_columns], join='outer', sort=True, axis=1)
+	inputDF = inputDF.drop( columns=['Condition1', 'Condition2'] )
+
+
+	############################### Median Impute  #######################
+	## Some NA existed in these numerical fields
+#	impute_cols = ['GarageArea', 'GarageCars','GarageYrBlt','LotFrontage']
+#	for i, c in enumerate ( impute_cols ):
+#		if inputDF[c].isnull().any():
+#			inputDF[c] = inputDF[c].fillna( inputDF[c].median() )
+
+
+	# LotFrontage : Since the area of each street connected to the house property most likely have a similar area to other houses in its neighborhood , we can fill in missing values by the median LotFrontage of the neighborhood.
+	# Group by neighborhood and fill in missing value by the median LotFrontage of all the neighborhood
+	inputDF["LotFrontage"] = inputDF.groupby("Neighborhood")["LotFrontage"].transform(lambda x: x.fillna(x.median()))
+
+	# GarageYrBlt, GarageArea and GarageCars : Replacing missing data with 0 (Since No garage = no cars in such garage.)
+	for col in ('GarageYrBlt', 'GarageArea', 'GarageCars'):
+		inputDF[col] = inputDF[col].fillna(0)
+
+	## Some NA existed in these categorical fields.
+	# Functional : data description says NA means typical
+	inputDF["Functional"] = inputDF["Functional"].fillna("Typ")
+
+	# Electrical : It has one NA value. Since this feature has mostly 'SBrkr', we can set that for the missing value.
+	inputDF['Electrical'] = inputDF['Electrical'].fillna(inputDF['Electrical'].mode()[0])
+
+	# KitchenQual: Only one NA value, and same as Electrical, we set 'TA' (which is the most frequent) for the missing value in KitchenQual.
+	inputDF['KitchenQual'] = inputDF['KitchenQual'].fillna(inputDF['KitchenQual'].mode()[0])
+
+	# SaleType : Fill in again with most frequent which is "WD"
+	inputDF['SaleType'] = inputDF['SaleType'].fillna(inputDF['SaleType'].mode()[0])
+
+
 
 	############################### Ordinal Features Label encoding  #######################
 
@@ -107,19 +151,28 @@ def impute( inputDF, onehot = False):
 	for col in ord_cols:
 	    inputDF[col] = inputDF[col].map(lambda x: ord_dic.get(x, 0))
 	
-
-	############################### Median Impute  #######################
-	impute_cols = ['GarageArea', 'GarageCars','GarageYrBlt','LotFrontage', 'TotalBsmtSF', 'TotalFlrSF']
-	for i, c in enumerate ( impute_cols ):
-		if inputDF[c].isnull().any():
-			inputDF[c] = inputDF[c].fillna( inputDF[c].median() )
-
-	############################### Label frequency encoding  #######################
-	inputDF.MSSubClass = inputDF.MSSubClass.astype('object')	
+	
+	############################### Transform numerical data to categorical  ##########
+	
+	inputDF.MSSubClass = inputDF.MSSubClass.astype('str')
+	inputDF.YrSold = inputDF.YrSold.astype('str')
+	inputDF.MoSold = inputDF.MoSold.astype('str')
+		
+	############################### Label frequency or onehot encoding  ##############
+	
+	##Get all numerical feature transformed
+	
+	numeric_feats = inputDF.dtypes[inputDF.dtypes != "object"].index
+	skewed_data = inputDF[numeric_feats].apply(lambda x: skew(x))
+	skewed = skewed_data[abs(skewed_data) > 0.75]
+	for i in skewed.index:
+	    inputDF[i] = boxcox1p(inputDF[i], 0.15)
+	
+	##Onehot or label encoding	
 	if onehot:
-
-		object_feats = inputDF.dtypes[inputDF.dtypes == "object"].index
+		
 		numeric_feats = inputDF.dtypes[inputDF.dtypes != "object"].index
+		object_feats = inputDF.dtypes[inputDF.dtypes == "object"].index		
 		objEnc = pd.get_dummies(inputDF[object_feats], drop_first=True, dummy_na=True)
 		numEnc = inputDF[numeric_feats]
 		inputDF = pd.concat( [objEnc,numEnc] , axis=1, join='outer', sort=True)
@@ -131,37 +184,11 @@ def impute( inputDF, onehot = False):
 				inputDF[c] = lce.fit_transform(inputDF[c])
 				encodedDic[inputDF.columns[i]] = lce.rev_count_dict  #add reversed dic back to the global variable
 
-	return inputDF, encodedDic
+
+	return [inputDF, encodedDic]
 
 	
-##################################This is from Zeyu's original file.  ########################
-###########???? Should we also include those ???????????????????????????????##################
-#	# LotFrontage : Since the area of each street connected to the house property most likely have a similar area to other houses in its neighborhood , we can fill in missing values by the median LotFrontage of the neighborhood.
-#	# Group by neighborhood and fill in missing value by the median LotFrontage of all the neighborhood
-#	all_data["LotFrontage"] = all_data.groupby("Neighborhood")["LotFrontage"].transform(lambda x: x.fillna(x.median()))
-#
-#	# GarageYrBlt, GarageArea and GarageCars : Replacing missing data with 0 (Since No garage = no cars in such garage.)
-#	for col in ('GarageYrBlt', 'GarageArea', 'GarageCars'):
-#		all_data[col] = all_data[col].fillna(0)
-#
-#	# Functional : data description says NA means typical
-#	all_data["Functional"] = all_data["Functional"].fillna("Typ")
-#
-#	# Electrical : It has one NA value. Since this feature has mostly 'SBrkr', we can set that for the missing value.
-#	all_data['Electrical'] = all_data['Electrical'].fillna(all_data['Electrical'].mode()[0])
-#
-#	# KitchenQual: Only one NA value, and same as Electrical, we set 'TA' (which is the most frequent) for the missing value in KitchenQual.
-#	all_data['KitchenQual'] = all_data['KitchenQual'].fillna(all_data['KitchenQual'].mode()[0])
-#
-#	# SaleType : Fill in again with most frequent which is "WD"
-#	all_data['SaleType'] = all_data['SaleType'].fillna(all_data['SaleType'].mode()[0])
-#
-#	# Transforming some numerical variables that are really categorical
-#	#Year and month sold are transformed into categorical features.
-#	all_data['YrSold'] = all_data['YrSold'].astype(str)
-#	all_data['MoSold'] = all_data['MoSold'].astype(str)
-#
-################################################################################################	
+
 
 
 
