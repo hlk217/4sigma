@@ -33,7 +33,6 @@ def impute( inputDF, onehot = False):
 	#	Imputed pd.DataFrame
 	#	label-encoded dictionary
 	
-	
 	encodedDic = {}
 	
 	inputDF.Exterior1st = inputDF.Exterior1st.str.replace("Brk Cmn", "BrkComm")
@@ -141,7 +140,6 @@ def impute( inputDF, onehot = False):
 	inputDF['SaleType'] = inputDF['SaleType'].fillna(inputDF['SaleType'].mode()[0])
 
 
-
 	############################### Ordinal Features Label encoding  #######################
 
 	ord_cols = ['ExterQual', 'ExterCond','BsmtCond','HeatingQC', 'KitchenQual', 
@@ -166,7 +164,8 @@ def impute( inputDF, onehot = False):
 	skewed_data = inputDF[numeric_feats].apply(lambda x: skew(x))
 	skewed = skewed_data[abs(skewed_data) > 0.75]
 	for i in skewed.index:
-	    inputDF[i] = boxcox1p(inputDF[i], 0.15)
+		inputDF[i] = boxcox1p(inputDF[i], 0.15)
+		print ( i )
 	
 	##Onehot or label encoding	
 	if onehot:
