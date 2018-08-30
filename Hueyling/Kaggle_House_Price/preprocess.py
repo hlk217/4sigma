@@ -25,7 +25,7 @@ from scipy.stats import kurtosis, skew
 from scipy.special import boxcox1p
 
 
-def impute( inputDF, onehot = False):
+def impute( inputDF, onehot = False, isBoxCox = True, skipFeature = ""):
 	
 	#input: pd.dataframe
 	#one-hot or label encoding for the categorical field
@@ -159,29 +159,46 @@ def impute( inputDF, onehot = False):
 	############################### Label frequency or onehot encoding  ##############
 	
 	##Get all numerical feature transformed
-	
-	numeric_feats = inputDF.dtypes[inputDF.dtypes != "object"].index
-	skewed_data = inputDF[numeric_feats].apply(lambda x: skew(x))
-	skewed = skewed_data[abs(skewed_data) > 0.75]
-	for i in skewed.index:
-		inputDF[i] = boxcox1p(inputDF[i], 0.15)
-		print ( i )
+	if isBoxCox:
+		numeric_feats = inputDF.dtypes[inputDF.dtypes != "object"].index
+		skewed_data = inputDF[numeric_feats].apply(lambda x: skew(x))
+		skewed = skewed_data[abs(skewed_data) > 0.75]
+		for i in skewed.index:
+			inputDF[i] = boxcox1p(inputDF[i], 0.15)
+			#print ( i )
 	
 	##Onehot or label encoding	
 	if onehot:
 		
 		numeric_feats = inputDF.dtypes[inputDF.dtypes != "object"].index
-		object_feats = inputDF.dtypes[inputDF.dtypes == "object"].index		
+		object_feats = inputDF.dtypes[inputDF.dtypes == "object"].index
+		for i, c in enumerate(object_feats):
+			if c == skipFeature:
+				object_feats.delete(i)
+				skipped = inputDF[skipFeature]
+				
 		objEnc = pd.get_dummies(inputDF[object_feats], drop_first=True, dummy_na=True)
 		numEnc = inputDF[numeric_feats]
-		inputDF = pd.concat( [objEnc,numEnc] , axis=1, join='outer', sort=True)
+		
+		try:
+		    skipped
+		except NameError:
+		    var_exists = False
+		else:
+		    var_exists = True
+		if var_exists:
+			inputDF = pd.concat( [objEnc,numEnc, skipped] , axis=1, join='outer', sort=True)
+		else:
+			inputDF = pd.concat( [objEnc,numEnc] , axis=1, join='outer', sort=True)
+		
 
 	else:		
 		for i, c in enumerate ( inputDF.columns ):
-			if inputDF[c].dtype == 'object':
+			if inputDF[c].dtype == 'object' and c != skipFeature:
 				lce = LabelCountEncoder()
 				inputDF[c] = lce.fit_transform(inputDF[c])
 				encodedDic[inputDF.columns[i]] = lce.rev_count_dict  #add reversed dic back to the global variable
+				#print ( c )	
 
 
 	return [inputDF, encodedDic]
